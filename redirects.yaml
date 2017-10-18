@@ -1,0 +1,3 @@
+usn(?P<page>/.*)?: "https://usn.ubuntu.com/usn{page}"
+place1: /place/one
+google: "https://google.com/"
