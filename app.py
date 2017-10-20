@@ -1,6 +1,5 @@
 # Core packages
 import os
-import re
 
 # External packages
 import flask
@@ -11,8 +10,13 @@ import routing
 
 app = flask.Flask(__name__)
 
-permanent_redirect_map = routing.UrlMap("permanent-redirects.yaml")
-redirect_map = routing.UrlMap("redirects.yaml")
+permanent_redirect_map = routing.YamlRegexMap("permanent-redirects.yaml")
+redirect_map = routing.YamlRegexMap("redirects.yaml")
+
+
+# Ordered before_request processors
+# ===
+# The order of these functions is paramount
 
 
 @app.before_request
@@ -42,33 +46,27 @@ def find_file_or_redirect():
     """
 
     request_path = flask.request.path
+    template_finder = routing.TemplateFinder(app.template_folder)
+    file_path = routing.get_file(request_path)
+    preferred_languages = routing.requested_languages(flask.request)
+    if 'en' not in preferred_languages:
+        preferred_languages.append('en')
+    languages = template_finder.get_languages(preferred_languages)
+    versions = routing.get_versions()
 
-    url_match = re.match(r'^(|.*[^/])(/(index(.html)?)?)?$', request_path)
-    minimal_url = url_match.group(1)
-    directory_url = minimal_url + '/'
-    filepath = minimal_url + '.html'
-    index_filepath = directory_url + 'index.html'
-    file_exists = os.path.isfile(app.template_folder + filepath)
-    index_exists = os.path.isfile(app.template_folder + index_filepath)
+    if os.path.isfile(app.template_folder + file_path):
+        return flask.render_template(file_path)
+    else:
+        new_path = template_finder.find_alternate_path(
+            request_path,
+            languages,
+            versions
+        )
 
-    if request_path == minimal_url:
-        if file_exists:
-            return flask.render_template(filepath)
-        elif index_exists:
-            return flask.redirect(app.template_folder + directory_url)
-
-    if request_path == directory_url:
-        if index_exists:
-            return flask.render_template(index_filepath)
-        elif file_exists:
-            return flask.redirect(app.template_folder + minimal_url)
-
-    if request_path > directory_url and index_exists:
-        return flask.redirect(app.template_folder + directory_url)
+        if new_path:
+            return flask.redirect(new_path)
 
 
 @app.route('/')
-@app.route('/place/two')
-@app.route('/place/one')
 def homepage():
     return "Hello world"
